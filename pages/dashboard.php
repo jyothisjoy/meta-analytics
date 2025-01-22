@@ -139,54 +139,46 @@ function updateCharts(data) {
     // Process traffic data
     const trafficData = processTrafficData(data.traffic);
     trafficChart.data = {
-        labels: trafficData.hotels,
+        labels: trafficData.hotels,  // Y-axis: hotels
         datasets: trafficData.dates.map((date, index) => ({
             label: date,
-            data: trafficData.actual.map(hotelData => hotelData[index] || 0),
+            data: trafficData.values.map(hotelData => hotelData[index]),
             borderColor: getColorForIndex(index),
             backgroundColor: getColorForIndex(index),
             fill: false,
             tension: 0.4,
-            borderWidth: 2
+            borderWidth: 2,
+            pointRadius: 3,
+            pointHoverRadius: 5
         }))
     };
     trafficChart.options = {
         responsive: true,
-        type: 'line',
+        indexAxis: 'y',  // Makes it horizontal
         plugins: {
+            legend: {
+                position: 'top',
+                align: 'start'
+            },
             tooltip: {
                 mode: 'index',
                 intersect: false
-            },
-            title: {
-                display: true,
-                text: 'Traffic Overview'
             }
         },
-        hover: {
-            mode: 'index',
-            intersect: false
-        },
         scales: {
-            y: {
-                type: 'linear',
-                display: true,
-                position: 'left',
+            x: {
+                beginAtZero: true,
                 title: {
                     display: true,
-                    text: 'Hotels'
+                    text: 'Number of Visitors'
                 },
                 grid: {
-                    drawOnChartArea: true
-                },
-                ticks: {
-                    stepSize: 50
+                    display: true
                 }
             },
-            x: {
-                title: {
-                    display: true,
-                    text: 'Dates'
+            y: {
+                grid: {
+                    display: false
                 }
             }
         }
@@ -196,54 +188,46 @@ function updateCharts(data) {
     // Process booking data
     const bookingData = processBookingData(data.bookings);
     bookingsChart.data = {
-        labels: bookingData.hotels,
+        labels: bookingData.hotels,  // Y-axis: hotels
         datasets: bookingData.dates.map((date, index) => ({
             label: date,
-            data: bookingData.actual.map(hotelData => hotelData[index] || 0),
+            data: bookingData.values.map(hotelData => hotelData[index]),
             borderColor: getColorForIndex(index),
             backgroundColor: getColorForIndex(index),
             fill: false,
             tension: 0.4,
-            borderWidth: 2
+            borderWidth: 2,
+            pointRadius: 3,
+            pointHoverRadius: 5
         }))
     };
     bookingsChart.options = {
         responsive: true,
-        type: 'line',
+        indexAxis: 'y',  // Makes it horizontal
         plugins: {
+            legend: {
+                position: 'top',
+                align: 'start'
+            },
             tooltip: {
                 mode: 'index',
                 intersect: false
-            },
-            title: {
-                display: true,
-                text: 'Bookings Overview'
             }
         },
-        hover: {
-            mode: 'index',
-            intersect: false
-        },
         scales: {
-            y: {
-                type: 'linear',
-                display: true,
-                position: 'left',
+            x: {
+                beginAtZero: true,
                 title: {
                     display: true,
-                    text: 'Hotels'
+                    text: 'Number of Bookings'
                 },
                 grid: {
-                    drawOnChartArea: true
-                },
-                ticks: {
-                    stepSize: 50
+                    display: true
                 }
             },
-            x: {
-                title: {
-                    display: true,
-                    text: 'Dates'
+            y: {
+                grid: {
+                    display: false
                 }
             }
         }
@@ -269,17 +253,21 @@ function processTrafficData(data) {
     const hotels = [...new Set(data.map(item => item.hotel_name))];
     const dates = [...new Set(data.map(item => item.date))];
     
+    // Create a matrix of values for each hotel and date
+    const values = hotels.map(hotel => 
+        dates.map(date => {
+            const entry = data.find(item => 
+                item.hotel_name === hotel && 
+                item.date === date
+            );
+            return entry ? entry.new_users : 0;
+        })
+    );
+
     return {
         hotels: hotels,
         dates: dates,
-        actual: hotels.map(hotel => 
-            dates.map(date => {
-                const entry = data.find(item => 
-                    item.hotel_name === hotel && item.date === date
-                );
-                return entry ? entry.new_users : 0;
-            })
-        )
+        values: values
     };
 }
 
@@ -287,17 +275,21 @@ function processBookingData(data) {
     const hotels = [...new Set(data.map(item => item.hotel_name))];
     const dates = [...new Set(data.map(item => item.date))];
     
+    // Create a matrix of values for each hotel and date
+    const values = hotels.map(hotel => 
+        dates.map(date => {
+            const entry = data.find(item => 
+                item.hotel_name === hotel && 
+                item.date === date
+            );
+            return entry ? entry.actual_bookings : 0;
+        })
+    );
+
     return {
         hotels: hotels,
         dates: dates,
-        actual: hotels.map(hotel => 
-            dates.map(date => {
-                const entry = data.find(item => 
-                    item.hotel_name === hotel && item.date === date
-                );
-                return entry ? entry.actual_bookings : 0;
-            })
-        )
+        values: values
     };
 }
 
