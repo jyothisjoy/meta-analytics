@@ -1,6 +1,7 @@
 <?php
 require_once '../includes/config.php';
 require_once '../includes/db.php';
+require_once '../includes/functions.php';
 
 header('Content-Type: application/json');
 session_start();
@@ -13,45 +14,46 @@ if (!isset($_SESSION['user_id'])) {
 try {
     $conn = getDBConnection();
     
-    // Get date range from request
-    $startDate = $_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days'));
-    $endDate = $_GET['end_date'] ?? date('Y-m-d');
+    $type = $_GET['type'] ?? '';
+    $startDate = $_GET['start_date'] ?? '';
+    $endDate = $_GET['end_date'] ?? '';
+    $hotelId = $_GET['hotel_id'] ?? '';
     
-    // Fetch traffic data
-    $trafficQuery = "
-        SELECT date, hotel_name, expected_traffic, new_users, bookings 
-        FROM traffic_data 
-        WHERE date BETWEEN ? AND ?
-        ORDER BY date, hotel_name
-    ";
-    
-    // Fetch booking data
-    $bookingQuery = "
-        SELECT date, hotel_name, number_of_rooms, booking_target, actual_bookings, booked_nights 
-        FROM booking_data 
-        WHERE date BETWEEN ? AND ?
-        ORDER BY date, hotel_name
-    ";
-    
-    // Get traffic data
-    $stmt = $conn->prepare($trafficQuery);
-    $stmt->execute([$startDate, $endDate]);
-    $trafficData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Get booking data
-    $stmt = $conn->prepare($bookingQuery);
-    $stmt->execute([$startDate, $endDate]);
-    $bookingData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+    if (!$type || !$startDate || !$endDate || !$hotelId) {
+        throw new Exception('Missing required parameters');
+    }
+
+    if ($type === 'traffic') {
+        $query = "SELECT date, expected_traffic, new_users, bookings 
+                 FROM traffic_data 
+                 WHERE hotel_id = :hotel_id 
+                 AND date BETWEEN :start_date AND :end_date 
+                 ORDER BY date";
+    } else {
+        $query = "SELECT date, number_of_rooms, booking_target, actual_bookings, booked_nights 
+                 FROM booking_data 
+                 WHERE hotel_id = :hotel_id 
+                 AND date BETWEEN :start_date AND :end_date 
+                 ORDER BY date";
+    }
+
+    $stmt = $conn->prepare($query);
+    $stmt->execute([
+        ':hotel_id' => $hotelId,
+        ':start_date' => $startDate,
+        ':end_date' => $endDate
+    ]);
+
+    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
     echo json_encode([
         'success' => true,
-        'traffic' => $trafficData,
-        'bookings' => $bookingData
+        $type => $data
     ]);
 
 } catch (Exception $e) {
     echo json_encode([
         'success' => false,
-        'message' => 'Error: ' . $e->getMessage()
+        'message' => $e->getMessage()
     ]);
 } 

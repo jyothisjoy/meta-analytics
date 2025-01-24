@@ -21,11 +21,9 @@
                             <input type="date" class="form-control" id="trafficEndDate">
                         </div>
                         <div class="col-md-3">
-                            <label>Metric:</label>
-                            <select class="form-control" id="trafficMetricSelect">
-                                <option value="expected_traffic">Expected Traffic</option>
-                                <option value="new_users">New Users</option>
-                                <option value="bookings">Number of Bookings</option>
+                            <label>Hotel:</label>
+                            <select class="form-control" id="trafficHotelSelect">
+                                <!-- Will be populated dynamically -->
                             </select>
                         </div>
                         <div class="col-md-3">
@@ -69,12 +67,9 @@
                             <input type="date" class="form-control" id="bookingsEndDate">
                         </div>
                         <div class="col-md-3">
-                            <label>Metric:</label>
-                            <select class="form-control" id="bookingsMetricSelect">
-                                <option value="number_of_rooms">Number of Rooms</option>
-                                <option value="booking_target">Booking Target</option>
-                                <option value="actual_bookings">Actual Bookings</option>
-                                <option value="booked_nights">Booked Nights</option>
+                            <label>Hotel:</label>
+                            <select class="form-control" id="bookingsHotelSelect">
+                                <!-- Will be populated dynamically -->
                             </select>
                         </div>
                         <div class="col-md-3">
@@ -116,6 +111,9 @@ function initializeCharts() {
         document.getElementById(`${type}StartDate`).value = thirtyDaysAgo.toISOString().split('T')[0];
         document.getElementById(`${type}EndDate`).value = today.toISOString().split('T')[0];
     });
+
+    // Populate hotel selects
+    populateHotelSelects();
     
     // Initialize charts
     const chartConfig = {
@@ -126,11 +124,25 @@ function initializeCharts() {
         },
         options: {
             responsive: true,
-            indexAxis: 'y',
             plugins: {
                 legend: {
                     position: 'top',
                     align: 'start'
+                }
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Dates'
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Values'
+                    }
                 }
             }
         }
@@ -151,35 +163,78 @@ function initializeCharts() {
     updateBookingsChart();
 }
 
+function populateHotelSelects() {
+    fetch('../api/hotels.php')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.hotels.length > 0) {
+                const trafficSelect = document.getElementById('trafficHotelSelect');
+                const bookingsSelect = document.getElementById('bookingsHotelSelect');
+                
+                // Clear existing options
+                trafficSelect.innerHTML = '<option value="">Select a Hotel</option>';
+                bookingsSelect.innerHTML = '<option value="">Select a Hotel</option>';
+                
+                // Add new options
+                data.hotels.forEach(hotel => {
+                    const trafficOption = new Option(hotel.hotel_name, hotel.id);
+                    const bookingsOption = new Option(hotel.hotel_name, hotel.id);
+                    trafficSelect.add(trafficOption);
+                    bookingsSelect.add(bookingsOption);
+                });
+
+                // Select first hotel by default
+                if (data.hotels.length > 0) {
+                    trafficSelect.value = data.hotels[0].id;
+                    bookingsSelect.value = data.hotels[0].id;
+                    
+                    // Trigger initial chart updates
+                    updateTrafficChart();
+                    updateBookingsChart();
+                }
+            } else {
+                console.error('No hotels found or error in response:', data);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading hotels:', error);
+        });
+}
+
 function updateTrafficChart() {
     const startDate = document.getElementById('trafficStartDate').value;
     const endDate = document.getElementById('trafficEndDate').value;
-    const metric = document.getElementById('trafficMetricSelect').value;
+    const hotelId = document.getElementById('trafficHotelSelect').value;
     
-    fetchAndUpdateChart('traffic', startDate, endDate, metric);
+    fetchAndUpdateChart('traffic', startDate, endDate, hotelId);
 }
 
 function updateBookingsChart() {
     const startDate = document.getElementById('bookingsStartDate').value;
     const endDate = document.getElementById('bookingsEndDate').value;
-    const metric = document.getElementById('bookingsMetricSelect').value;
+    const hotelId = document.getElementById('bookingsHotelSelect').value;
     
-    fetchAndUpdateChart('bookings', startDate, endDate, metric);
+    fetchAndUpdateChart('bookings', startDate, endDate, hotelId);
 }
 
-function fetchAndUpdateChart(type, startDate, endDate, metric) {
-    fetch(`../api/dashboard.php?type=${type}&start_date=${startDate}&end_date=${endDate}`)
+function fetchAndUpdateChart(type, startDate, endDate, hotelId) {
+    if (!hotelId) {
+        console.log('No hotel selected');
+        return;
+    }
+
+    fetch(`../api/dashboard.php?type=${type}&start_date=${startDate}&end_date=${endDate}&hotel_id=${hotelId}`)
         .then(response => response.json())
         .then(data => {
+            console.log(`${type} data received:`, data); // Debug log
             if (data.success) {
-                updateChartData(type, data, metric);
+                updateChartData(type, data, hotelId);
             } else {
-                alert(`Error loading ${type} data: ${data.message}`);
+                console.error(`Error loading ${type} data:`, data.message);
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert(`Failed to load ${type} data`);
         });
 }
 
@@ -217,63 +272,13 @@ function getMetricValue(data, metric) {
     }
 }
 
-function updateChartData(type, data, metric) {
-    const selectedMetric = document.getElementById(`${type}MetricSelect`).value;
-    const metricTitle = getMetricTitle(selectedMetric);
+function updateChartData(type, data, hotelId) {
+    const chartToUpdate = type === 'traffic' ? trafficChart : bookingsChart;
+    const processedData = type === 'traffic' 
+        ? processTrafficData(data.traffic || [], hotelId) 
+        : processBookingData(data.bookings || [], hotelId);
     
-    // Determine if we're showing traffic or booking data
-    const isTrafficMetric = ['expected_traffic', 'new_users', 'bookings'].includes(selectedMetric);
-    const chartData = isTrafficMetric ? processTrafficData(data.traffic, selectedMetric) : processBookingData(data.bookings, selectedMetric);
-    
-    const chartToUpdate = isTrafficMetric ? trafficChart : bookingsChart;
-    
-    chartToUpdate.data = {
-        labels: chartData.hotels,
-        datasets: chartData.dates.map((date, index) => ({
-            label: date,
-            data: chartData.values.map(hotelData => hotelData[index]),
-            borderColor: getColorForIndex(index),
-            backgroundColor: getColorForIndex(index),
-            fill: false,
-            tension: 0.4,
-            borderWidth: 2,
-            pointRadius: 3,
-            pointHoverRadius: 5
-        }))
-    };
-    
-    chartToUpdate.options = {
-        responsive: true,
-        indexAxis: 'y',
-        plugins: {
-            legend: {
-                position: 'top',
-                align: 'start'
-            },
-            tooltip: {
-                mode: 'index',
-                intersect: false
-            }
-        },
-        scales: {
-            x: {
-                beginAtZero: true,
-                title: {
-                    display: true,
-                    text: metricTitle
-                },
-                grid: {
-                    display: true
-                }
-            },
-            y: {
-                grid: {
-                    display: false
-                }
-            }
-        }
-    };
-    
+    chartToUpdate.data = processedData;
     chartToUpdate.update();
 }
 
@@ -291,45 +296,80 @@ function getColorForIndex(index, alpha = 1) {
     return colors[index % colors.length];
 }
 
-function processTrafficData(data, metric) {
-    const hotels = [...new Set(data.map(item => item.hotel_name))];
-    const dates = [...new Set(data.map(item => item.date))];
+function processTrafficData(data, hotelId) {
+    if (!data || data.length === 0) {
+        console.log('No traffic data available');
+        return {
+            labels: [],
+            datasets: []
+        };
+    }
+
+    // Get all dates for this hotel
+    const dates = [...new Set(data.map(item => item.date))].sort();
     
-    const values = hotels.map(hotel => 
-        dates.map(date => {
-            const entry = data.find(item => 
-                item.hotel_name === hotel && 
-                item.date === date
-            );
-            return entry ? getMetricValue(entry, metric) : 0;
-        })
-    );
+    // Define the metrics we want to show
+    const metrics = [
+        { key: 'expected_traffic', label: 'Expected Traffic', color: 'rgb(255, 99, 132)' },
+        { key: 'new_users', label: 'New Users', color: 'rgb(54, 162, 235)' },
+        { key: 'bookings', label: 'Bookings', color: 'rgb(75, 192, 192)' }
+    ];
+
+    // Create a dataset for each metric
+    const datasets = metrics.map(metric => ({
+        label: metric.label,
+        data: dates.map(date => {
+            const entry = data.find(item => item.date === date);
+            return entry ? entry[metric.key] || 0 : 0;
+        }),
+        borderColor: metric.color,
+        backgroundColor: metric.color,
+        fill: false,
+        tension: 0.4
+    }));
 
     return {
-        hotels: hotels,
-        dates: dates,
-        values: values
+        labels: dates,
+        datasets: datasets
     };
 }
 
-function processBookingData(data, metric) {
-    const hotels = [...new Set(data.map(item => item.hotel_name))];
-    const dates = [...new Set(data.map(item => item.date))];
+function processBookingData(data, hotelId) {
+    if (!data || data.length === 0) {
+        console.log('No booking data available');
+        return {
+            labels: [],
+            datasets: []
+        };
+    }
+
+    // Get all dates for this hotel
+    const dates = [...new Set(data.map(item => item.date))].sort();
     
-    const values = hotels.map(hotel => 
-        dates.map(date => {
-            const entry = data.find(item => 
-                item.hotel_name === hotel && 
-                item.date === date
-            );
-            return entry ? getMetricValue(entry, metric) : 0;
-        })
-    );
+    // Define the metrics we want to show
+    const metrics = [
+        { key: 'number_of_rooms', label: 'Number of Rooms', color: 'rgb(255, 99, 132)' },
+        { key: 'booking_target', label: 'Booking Target', color: 'rgb(54, 162, 235)' },
+        { key: 'actual_bookings', label: 'Actual Bookings', color: 'rgb(75, 192, 192)' },
+        { key: 'booked_nights', label: 'Booked Nights', color: 'rgb(255, 206, 86)' }
+    ];
+
+    // Create a dataset for each metric
+    const datasets = metrics.map(metric => ({
+        label: metric.label,
+        data: dates.map(date => {
+            const entry = data.find(item => item.date === date);
+            return entry ? entry[metric.key] || 0 : 0;
+        }),
+        borderColor: metric.color,
+        backgroundColor: metric.color,
+        fill: false,
+        tension: 0.4
+    }));
 
     return {
-        hotels: hotels,
-        dates: dates,
-        values: values
+        labels: dates,
+        datasets: datasets
     };
 }
 
@@ -337,8 +377,8 @@ function processBookingData(data, metric) {
 document.addEventListener('DOMContentLoaded', initializeCharts);
 
 // Update the dashboard when metric changes
-document.getElementById('trafficMetricSelect').addEventListener('change', updateTrafficChart);
-document.getElementById('bookingsMetricSelect').addEventListener('change', updateBookingsChart);
+document.getElementById('trafficHotelSelect').addEventListener('change', updateTrafficChart);
+document.getElementById('bookingsHotelSelect').addEventListener('change', updateBookingsChart);
 </script>
 
 <?php require_once '../includes/footer.php'; ?> 
