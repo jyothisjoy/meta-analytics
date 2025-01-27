@@ -29,19 +29,38 @@ try {
     $conn = getDBConnection();
     $conn->beginTransaction();
 
-    // Prepare the insert statement
-    $stmt = $conn->prepare("
+    // First, get or create hotel IDs
+    $hotelStmt = $conn->prepare("
+        INSERT IGNORE INTO hotels (hotel_name) 
+        VALUES (?)
+    ");
+
+    $getHotelIdStmt = $conn->prepare("
+        SELECT id FROM hotels WHERE hotel_name = ?
+    ");
+
+    // Prepare the traffic data insert statement
+    $trafficStmt = $conn->prepare("
         INSERT INTO traffic_data 
-        (date, hotel_name, expected_traffic, new_users, bookings, created_by) 
+        (date, hotel_id, expected_traffic, new_users, bookings, created_by) 
         VALUES 
         (?, ?, ?, ?, ?, ?)
     ");
 
     // Insert each row
     foreach ($data['data'] as $row) {
-        $stmt->execute([
+        // First ensure hotel exists and get its ID
+        $hotelStmt->execute([$row['hotel_name']]);
+        $getHotelIdStmt->execute([$row['hotel_name']]);
+        $hotelResult = $getHotelIdStmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$hotelResult) {
+            throw new Exception("Failed to get hotel ID for " . $row['hotel_name']);
+        }
+
+        $trafficStmt->execute([
             $data['date'],
-            $row['hotel_name'],
+            $hotelResult['id'],
             $row['expected_traffic'],
             $row['new_users'],
             $row['bookings'],

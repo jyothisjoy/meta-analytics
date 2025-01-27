@@ -29,19 +29,38 @@ try {
     $conn = getDBConnection();
     $conn->beginTransaction();
 
-    // Prepare the insert statement
-    $stmt = $conn->prepare("
+    // First, get or create hotel IDs
+    $hotelStmt = $conn->prepare("
+        INSERT IGNORE INTO hotels (hotel_name) 
+        VALUES (?)
+    ");
+
+    $getHotelIdStmt = $conn->prepare("
+        SELECT id FROM hotels WHERE hotel_name = ?
+    ");
+
+    // Prepare the booking data insert statement
+    $bookingStmt = $conn->prepare("
         INSERT INTO booking_data 
-        (date, hotel_name, number_of_rooms, booking_target, actual_bookings, booked_nights, created_by) 
+        (date, hotel_id, number_of_rooms, booking_target, actual_bookings, booked_nights, created_by) 
         VALUES 
         (?, ?, ?, ?, ?, ?, ?)
     ");
 
     // Insert each row
     foreach ($data['data'] as $row) {
-        $stmt->execute([
+        // First ensure hotel exists and get its ID
+        $hotelStmt->execute([$row['hotel_name']]);
+        $getHotelIdStmt->execute([$row['hotel_name']]);
+        $hotelResult = $getHotelIdStmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$hotelResult) {
+            throw new Exception("Failed to get hotel ID for " . $row['hotel_name']);
+        }
+
+        $bookingStmt->execute([
             $data['date'],
-            $row['hotel_name'],
+            $hotelResult['id'],
             $row['number_of_rooms'],
             $row['booking_target'],
             $row['actual_bookings'],
